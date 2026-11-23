@@ -1,6 +1,7 @@
+import os
 import time
 from pinecone import Pinecone, ServerlessSpec
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from app.core.config import get_settings
 
@@ -14,11 +15,12 @@ EMBEDDING_DIMENSIONS = {
     "text-embedding-3-large": 3072,
     "text-embedding-ada-002": 1536,
     "all-minilm-l6-v2": 384,
+    "sentence-transformers/all-minilm-l6-v2": 384,
 }
 
 
 def get_embedding_dimension(model_name: str | None = None) -> int:
-    name = (model_name or settings.embedding_model or "all-MiniLM-L6-v2").strip().lower()
+    name = (model_name or settings.embedding_model or "sentence-transformers/all-MiniLM-L6-v2").strip().lower()
     if name in EMBEDDING_DIMENSIONS:
         return EMBEDDING_DIMENSIONS[name]
     if "all-minilm" in name:
@@ -37,10 +39,20 @@ def get_embedding_dimension(model_name: str | None = None) -> int:
 def get_embeddings():
     global _embeddings
     if _embeddings is None:
-        model_name = settings.embedding_model or "all-MiniLM-L6-v2"
+        model_name = settings.embedding_model or "sentence-transformers/all-MiniLM-L6-v2"
         if "text-embedding" in model_name.lower():
-            model_name = "all-MiniLM-L6-v2"
-        _embeddings = HuggingFaceEmbeddings(model_name=model_name)
+            model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        if "/" not in model_name:
+            model_name = f"sentence-transformers/{model_name}"
+
+        hf_token = getattr(settings, "huggingfacehub_api_token", None) or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        if not hf_token:
+            raise RuntimeError("HUGGINGFACEHUB_API_TOKEN is missing in environment variables")
+
+        _embeddings = HuggingFaceEndpointEmbeddings(
+            model=model_name,
+            huggingfacehub_api_token=hf_token,
+        )
     return _embeddings
 
 
